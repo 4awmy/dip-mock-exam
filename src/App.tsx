@@ -9,6 +9,8 @@ import {
   getCurrentUser, 
   getScoreboard, 
   addScoreEntry, 
+  fetchCloudKVScoreboard,
+  subscribeToCloudUpdates,
   type ScoreboardEntry 
 } from './utils/scoreboard';
 import { ExamHeader } from './components/ExamHeader';
@@ -73,6 +75,19 @@ export function App() {
 
   // Scoreboard
   const [scoreboardEntries, setScoreboardEntries] = useState<ScoreboardEntry[]>(() => getScoreboard());
+
+  // Cloud KV synchronization & real-time live events
+  useEffect(() => {
+    fetchCloudKVScoreboard().then(updated => {
+      setScoreboardEntries(updated);
+    });
+
+    const unsubscribe = subscribeToCloudUpdates((incoming) => {
+      setScoreboardEntries(incoming);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Timer Countdown Effect
   useEffect(() => {

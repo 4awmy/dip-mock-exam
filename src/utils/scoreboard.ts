@@ -15,14 +15,16 @@ export interface ScoreboardEntry {
 
 const STORAGE_KEY = 'dip_mock_exam_scoreboard_v1';
 const CURRENT_USER_KEY = 'dip_mock_exam_user_v1';
+const CLOUD_KV_TOPIC = 'ccs4505-dip-scoreboard-2026';
+const CLOUD_KV_URL = `https://ntfy.sh/${CLOUD_KV_TOPIC}`;
 
-// Initial preloaded peer cohort from AASTMT DIP class to make the scoreboard lively!
+// Baseline peer cohort from CC4505 class
 const SEED_ENTRIES: ScoreboardEntry[] = [
   {
     id: "seed-1",
     userName: "Omar Metwally",
     studentId: "20101234",
-    timestamp: Date.now() - 1000 * 60 * 60 * 3, // 3 hours ago
+    timestamp: Date.now() - 1000 * 60 * 60 * 3,
     mode: "exam",
     tfScore: 30,
     mcqScore: 16,
@@ -116,19 +118,35 @@ export function clearCurrentUser(): void {
   }
 }
 
+function mergeEntries(local: ScoreboardEntry[], incoming: ScoreboardEntry[]): ScoreboardEntry[] {
+  const map = new Map<string, ScoreboardEntry>();
+  
+  // Add seed and local first
+  local.forEach(e => map.set(e.id, e));
+  
+  // Add/overwrite incoming by ID or by same user & timestamp
+  incoming.forEach(e => {
+    if (!e || !e.userName || e.totalScore === undefined) return;
+    map.set(e.id, e);
+  });
+
+  return Array.from(map.values()).sort(
+    (a, b) => b.totalScore - a.totalScore || a.timeTakenSeconds - b.timeTakenSeconds
+  );
+}
+
 export function getScoreboard(): ScoreboardEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.sort((a, b) => b.totalScore - a.totalScore || a.timeTakenSeconds - b.timeTakenSeconds);
+        return mergeEntries(SEED_ENTRIES, parsed);
       }
     }
   } catch (e) {
-    console.error("Failed to load scoreboard", e);
+    console.error("Failed to load scoreboard from storage", e);
   }
-  // Initialize with seed entries
   saveScoreboard(SEED_ENTRIES);
   return SEED_ENTRIES;
 }
@@ -138,6 +156,102 @@ export function saveScoreboard(entries: ScoreboardEntry[]): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   } catch (e) {
     console.error("Failed to save scoreboard", e);
+  }
+}
+
+/**
+ * Broadcast an exam attempt to the Serverless Cloud KV Topic
+ */
+async function syncToCloudKV(entry: ScoreboardEntry): Promise<void> {
+  try {
+    await fetch(CLOUD_KV_URL, {
+      method: 'POST',
+      headers: {
+        'Title': 'New Exam Submission',
+        'Tags': 'graduation_cap,trophy'
+      },
+      body: JSON.stringify(entry)
+    });
+    console.log('✅ Synchronized score to Serverless Cloud KV:', entry.userName);
+  } catch (err) {
+    console.warn('Could not reach Serverless Cloud KV, score saved locally:', err);
+  }
+}
+
+/**
+ * Fetch all shared student attempts from Serverless Cloud KV
+ */
+export async function fetchCloudKVScoreboard(): Promise<ScoreboardEntry[]> {
+  try {
+    const response = await fetch(`${CLOUD_KV_URL}/json?poll=1&since=all`, {
+      method: 'GET',
+    });
+    if (!response.ok) return getScoreboard();
+
+    const text = await response.text();
+    const lines = text.trim().split('\n');
+    const cloudEntries: ScoreboardEntry[] = [];
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const payload = JSON.parse(line);
+        if (payload.event === 'message' && payload.message) {
+          const entry: ScoreboardEntry = typeof payload.message === 'string'
+            ? JSON.parse(payload.message)
+            : payload.message;
+          if (entry && entry.id && entry.userName) {
+            cloudEntries.push(entry);
+          }
+        }
+      } catch (parseErr) {
+        // Skip unparseable line
+      }
+    }
+
+    if (cloudEntries.length > 0) {
+      const merged = mergeEntries(getScoreboard(), cloudEntries);
+      saveScoreboard(merged);
+      return merged;
+    }
+  } catch (err) {
+    console.warn('Serverless Cloud KV fetch error:', err);
+  }
+  return getScoreboard();
+}
+
+/**
+ * Listen to live real-time score updates via Server-Sent Events (SSE)
+ */
+export function subscribeToCloudUpdates(onUpdate: (updated: ScoreboardEntry[]) => void): () => void {
+  try {
+    const eventSource = new EventSource(`${CLOUD_KV_URL}/sse`);
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.event === 'message' && data.message) {
+          const newEntry: ScoreboardEntry = typeof data.message === 'string'
+            ? JSON.parse(data.message)
+            : data.message;
+          if (newEntry && newEntry.userName && newEntry.totalScore !== undefined) {
+            const current = getScoreboard();
+            const merged = mergeEntries(current, [newEntry]);
+            saveScoreboard(merged);
+            onUpdate(merged);
+          }
+        }
+      } catch (e) {
+        console.error("Error handling SSE event", e);
+      }
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  } catch (err) {
+    console.warn("SSE not supported or failed to connect", err);
+    return () => {};
   }
 }
 
@@ -161,8 +275,12 @@ export function addScoreEntry(entry: Omit<ScoreboardEntry, 'id' | 'timestamp' | 
   };
 
   const existing = getScoreboard();
-  const updated = [newEntry, ...existing].sort((a, b) => b.totalScore - a.totalScore || a.timeTakenSeconds - b.timeTakenSeconds);
+  const updated = mergeEntries(existing, [newEntry]);
   saveScoreboard(updated);
+
+  // Sync to Serverless Cloud KV in the background
+  syncToCloudKV(newEntry);
+
   return newEntry;
 }
 
