@@ -14,6 +14,8 @@ import {
 
 interface ExamHeaderProps {
   currentUser: { userName: string; studentId: string };
+  selectedExam: 'exam-1' | 'exam-2';
+  onSelectExam: (exam: 'exam-1' | 'exam-2') => void;
   activeTab: 'exam' | 'practice' | 'reference' | 'scoreboard';
   setActiveTab: (tab: 'exam' | 'practice' | 'reference' | 'scoreboard') => void;
   timeRemainingSeconds: number;
@@ -28,6 +30,8 @@ interface ExamHeaderProps {
 
 export const ExamHeader: React.FC<ExamHeaderProps> = ({
   currentUser,
+  selectedExam,
+  onSelectExam,
   activeTab,
   setActiveTab,
   timeRemainingSeconds,
@@ -65,9 +69,31 @@ export const ExamHeader: React.FC<ExamHeaderProps> = ({
                   Digital Image Processing — Mock Exam & Study Portal
                 </h1>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                AASTMT • Based on Course Lectures Weeks 01, 02 & 03
-              </p>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => onSelectExam('exam-1')}
+                  className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold transition-all ${
+                    selectedExam === 'exam-1'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  Mock 1: Practice Sheet
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSelectExam('exam-2')}
+                  className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 ${
+                    selectedExam === 'exam-2'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span>⭐ Mock 2: Real Midterm Exam</span>
+                  <span className="px-1 py-0.2 rounded text-[9px] bg-amber-400/30 text-amber-900 dark:text-amber-200 font-extrabold uppercase">New</span>
+                </button>
+              </div>
             </div>
           </div>
 

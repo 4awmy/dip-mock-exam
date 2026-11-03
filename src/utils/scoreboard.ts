@@ -2,6 +2,7 @@ export interface ScoreboardEntry {
   id: string;
   userName: string;
   studentId?: string;
+  examId?: 'exam-1' | 'exam-2' | string;
   timestamp: number;
   mode: 'exam' | 'practice';
   tfScore: number;
@@ -268,6 +269,7 @@ export function addScoreEntry(entry: Omit<ScoreboardEntry, 'id' | 'timestamp' | 
 
   const newEntry: ScoreboardEntry = {
     ...entry,
+    examId: entry.examId || 'exam-1',
     id: `attempt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     timestamp: Date.now(),
     percentage,

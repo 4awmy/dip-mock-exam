@@ -16,12 +16,14 @@ export const ScoreboardView: React.FC<ScoreboardViewProps> = ({
 }) => {
   const [search, setSearch] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'exam' | 'practice'>('all');
+  const [filterExam, setFilterExam] = useState<'all' | 'exam-1' | 'exam-2'>('all');
 
   const filtered = entries.filter((entry) => {
     const matchName = entry.userName.toLowerCase().includes(search.toLowerCase()) ||
       (entry.studentId && entry.studentId.includes(search));
     const matchMode = filterMode === 'all' || entry.mode === filterMode;
-    return matchName && matchMode;
+    const matchExam = filterExam === 'all' || (entry.examId || 'exam-1') === filterExam;
+    return matchName && matchMode && matchExam;
   });
 
   const avgScore = entries.length > 0 
@@ -139,20 +141,55 @@ export const ScoreboardView: React.FC<ScoreboardViewProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl self-start sm:self-auto">
-          {(['all', 'exam', 'practice'] as const).map((m) => (
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
             <button
-              key={m}
-              onClick={() => setFilterMode(m)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${
-                filterMode === m
+              onClick={() => setFilterExam('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                filterExam === 'all'
                   ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              {m}
+              All Exams
             </button>
-          ))}
+            <button
+              onClick={() => setFilterExam('exam-1')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                filterExam === 'exam-1'
+                  ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Mock 1
+            </button>
+            <button
+              onClick={() => setFilterExam('exam-2')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                filterExam === 'exam-2'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              ⭐ Mock 2
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+            {(['all', 'exam', 'practice'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setFilterMode(m)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-colors ${
+                  filterMode === m
+                    ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -163,6 +200,7 @@ export const ScoreboardView: React.FC<ScoreboardViewProps> = ({
             <tr>
               <th className="py-3.5 px-4 w-16">Rank</th>
               <th className="py-3.5 px-4">Student</th>
+              <th className="py-3.5 px-3">Exam</th>
               <th className="py-3.5 px-3">Mode</th>
               <th className="py-3.5 px-3">TF (30)</th>
               <th className="py-3.5 px-3">MCQ (16)</th>
@@ -209,6 +247,16 @@ export const ScoreboardView: React.FC<ScoreboardViewProps> = ({
                     {entry.studentId && entry.studentId !== 'N/A' && (
                       <div className="text-[10px] text-slate-400">ID: {entry.studentId}</div>
                     )}
+                  </td>
+
+                  <td className="py-3.5 px-3">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                      entry.examId === 'exam-2'
+                        ? 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                        : 'bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+                    }`}>
+                      {entry.examId === 'exam-2' ? 'Mock 2' : 'Mock 1'}
+                    </span>
                   </td>
 
                   <td className="py-3.5 px-3">

@@ -1,12 +1,26 @@
 import React, { useState } from 'react';
 import { TF_QUESTIONS, MCQ_QUESTIONS, ESSAY_QUESTIONS, EXAM_METADATA } from '../data/examData';
+import { TF_QUESTIONS_2, MCQ_QUESTIONS_2, ESSAY_QUESTIONS_2, EXAM_METADATA_2 } from '../data/mockExam2Data';
 import { BookOpen, Search, Printer, CheckCircle, HelpCircle, FileText } from 'lucide-react';
 
-export const ReferenceKeyView: React.FC = () => {
+interface ReferenceKeyViewProps {
+  selectedExam: 'exam-1' | 'exam-2';
+  onSelectExam: (exam: 'exam-1' | 'exam-2') => void;
+}
+
+export const ReferenceKeyView: React.FC<ReferenceKeyViewProps> = ({
+  selectedExam,
+  onSelectExam,
+}) => {
   const [search, setSearch] = useState('');
   const [sectionFilter, setSectionFilter] = useState<'all' | 'tf' | 'mcq' | 'essay'>('all');
 
-  const filteredTF = TF_QUESTIONS.filter(q => {
+  const metadata = selectedExam === 'exam-1' ? EXAM_METADATA : EXAM_METADATA_2;
+  const currentTF = selectedExam === 'exam-1' ? TF_QUESTIONS : TF_QUESTIONS_2;
+  const currentMCQ = selectedExam === 'exam-1' ? MCQ_QUESTIONS : MCQ_QUESTIONS_2;
+  const currentEssay = selectedExam === 'exam-1' ? ESSAY_QUESTIONS : ESSAY_QUESTIONS_2;
+
+  const filteredTF = currentTF.filter(q => {
     if (sectionFilter !== 'all' && sectionFilter !== 'tf') return false;
     if (!search) return true;
     const term = search.toLowerCase();
@@ -15,7 +29,7 @@ export const ReferenceKeyView: React.FC = () => {
       q.topic.toLowerCase().includes(term);
   });
 
-  const filteredMCQ = MCQ_QUESTIONS.filter(q => {
+  const filteredMCQ = currentMCQ.filter(q => {
     if (sectionFilter !== 'all' && sectionFilter !== 'mcq') return false;
     if (!search) return true;
     const term = search.toLowerCase();
@@ -24,7 +38,7 @@ export const ReferenceKeyView: React.FC = () => {
       q.topic.toLowerCase().includes(term);
   });
 
-  const filteredEssay = ESSAY_QUESTIONS.filter(q => {
+  const filteredEssay = currentEssay.filter(q => {
     if (sectionFilter !== 'all' && sectionFilter !== 'essay') return false;
     if (!search) return true;
     const term = search.toLowerCase();
@@ -48,14 +62,34 @@ export const ReferenceKeyView: React.FC = () => {
               Official Lecture Answer Key & Comprehensive Study Guide
             </h2>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Every question mapped to its corresponding lecture, slide number, verbatim quote, and explanation.
-          </p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-xs text-slate-500 dark:text-slate-400">Viewing Exam:</span>
+            <button
+              onClick={() => onSelectExam('exam-1')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                selectedExam === 'exam-1'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              Mock 1 (Week 04 Practice Paper)
+            </button>
+            <button
+              onClick={() => onSelectExam('exam-2')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                selectedExam === 'exam-2'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              ⭐ Mock 2 (Real Midterm Exam)
+            </button>
+          </div>
         </div>
 
         <button
           onClick={handlePrint}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors no-print"
+          className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-colors no-print self-start sm:self-auto"
         >
           <Printer className="w-4 h-4" />
           <span>Print / Save as PDF</span>
@@ -65,10 +99,10 @@ export const ReferenceKeyView: React.FC = () => {
       {/* Lectures Summary Card */}
       <div className="p-4 rounded-2xl bg-blue-50/70 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 space-y-2">
         <div className="text-xs font-bold text-blue-900 dark:text-blue-300">
-          Source Material Coverage (AASTMT CCS4505):
+          Source Material Coverage for {metadata.examTitle}:
         </div>
         <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1 list-disc list-inside">
-          {EXAM_METADATA.lectures.map((lec, i) => (
+          {metadata.lectures.map((lec, i) => (
             <li key={i}><span className="font-medium">{lec}</span></li>
           ))}
         </ul>

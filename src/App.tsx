@@ -5,6 +5,12 @@ import {
   ESSAY_QUESTIONS, 
   EXAM_METADATA 
 } from './data/examData';
+import {
+  TF_QUESTIONS_2,
+  MCQ_QUESTIONS_2,
+  ESSAY_QUESTIONS_2,
+  EXAM_METADATA_2
+} from './data/mockExam2Data';
 import { 
   getCurrentUser, 
   getScoreboard, 
@@ -28,8 +34,31 @@ import {
   HelpCircle, 
   FileText,
   Send,
-  RotateCcw
+  RotateCcw,
+  Sparkles
 } from 'lucide-react';
+
+interface ExamProgress {
+  tf: Record<string, boolean>;
+  mcq: Record<string, 'A' | 'B' | 'C' | 'D'>;
+  essay: Record<string, string>;
+  essayScores: Record<string, number>;
+  bookmarks: Set<string>;
+  timeRemaining: number;
+  submitted: boolean;
+  result: ScoreboardEntry | null;
+}
+
+const initialProgress = (timeLimitMinutes: number): ExamProgress => ({
+  tf: {},
+  mcq: {},
+  essay: {},
+  essayScores: {},
+  bookmarks: new Set(),
+  timeRemaining: timeLimitMinutes * 60,
+  submitted: false,
+  result: null
+});
 
 export function App() {
   // Dark mode
@@ -55,26 +84,28 @@ export function App() {
   const [currentUser, setUserState] = useState<{ userName: string; studentId: string } | null>(() => getCurrentUser());
   const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(!currentUser);
 
-  // Tabs & Navigation
+  // Active Exam & Navigation
+  const [selectedExam, setSelectedExam] = useState<'exam-1' | 'exam-2'>('exam-1');
   const [activeTab, setActiveTab] = useState<'exam' | 'practice' | 'reference' | 'scoreboard'>('exam');
   const [activeExamSection, setActiveExamSection] = useState<'tf' | 'mcq' | 'essay'>('tf');
 
-  // Exam Progress & State
-  const [userTFAnswers, setUserTFAnswers] = useState<Record<string, boolean>>({});
-  const [userMCQAnswers, setUserMCQAnswers] = useState<Record<string, 'A' | 'B' | 'C' | 'D'>>({});
-  const [userEssayAnswers, setUserEssayAnswers] = useState<Record<string, string>>({});
-  const [essayScores, setEssayScores] = useState<Record<string, number>>({});
-  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  // Multi-exam progress state
+  const [progressExam1, setProgressExam1] = useState<ExamProgress>(() => initialProgress(EXAM_METADATA.timeLimitMinutes));
+  const [progressExam2, setProgressExam2] = useState<ExamProgress>(() => initialProgress(EXAM_METADATA_2.timeLimitMinutes));
 
-  // Timer
-  const [timeRemainingSeconds, setTimeRemainingSeconds] = useState<number>(EXAM_METADATA.timeLimitMinutes * 60);
-  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(true);
-  const [isExamSubmitted, setIsExamSubmitted] = useState<boolean>(false);
   const [showResultsModal, setShowResultsModal] = useState<boolean>(false);
-  const [submissionResult, setSubmissionResult] = useState<ScoreboardEntry | null>(null);
 
-  // Scoreboard
+  // Scoreboard entries
   const [scoreboardEntries, setScoreboardEntries] = useState<ScoreboardEntry[]>(() => getScoreboard());
+
+  // Current active exam questions & state
+  const currentMetadata = selectedExam === 'exam-1' ? EXAM_METADATA : EXAM_METADATA_2;
+  const currentTF = selectedExam === 'exam-1' ? TF_QUESTIONS : TF_QUESTIONS_2;
+  const currentMCQ = selectedExam === 'exam-1' ? MCQ_QUESTIONS : MCQ_QUESTIONS_2;
+  const currentEssay = selectedExam === 'exam-1' ? ESSAY_QUESTIONS : ESSAY_QUESTIONS_2;
+
+  const currentProgress = selectedExam === 'exam-1' ? progressExam1 : progressExam2;
+  const setCurrentProgress = selectedExam === 'exam-1' ? setProgressExam1 : setProgressExam2;
 
   // Cloud KV synchronization & real-time live events
   useEffect(() => {
@@ -91,45 +122,58 @@ export function App() {
 
   // Timer Countdown Effect
   useEffect(() => {
-    if (!isTimerRunning || isExamSubmitted || activeTab !== 'exam') return;
+    if (currentProgress.submitted || activeTab !== 'exam') return;
 
     const timer = setInterval(() => {
-      setTimeRemainingSeconds((prev) => {
-        if (prev <= 1) {
+      setCurrentProgress(prev => {
+        if (prev.submitted) return prev;
+        if (prev.timeRemaining <= 1) {
           clearInterval(timer);
           handleSubmitExam();
-          return 0;
+          return { ...prev, timeRemaining: 0 };
         }
-        return prev - 1;
+        return { ...prev, timeRemaining: prev.timeRemaining - 1 };
       });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isTimerRunning, isExamSubmitted, activeTab]);
+  }, [currentProgress.submitted, activeTab, selectedExam]);
 
   // Answer handlers
   const handleSelectTF = (id: string, answer: boolean) => {
-    setUserTFAnswers(prev => ({ ...prev, [id]: answer }));
+    setCurrentProgress(prev => ({
+      ...prev,
+      tf: { ...prev.tf, [id]: answer }
+    }));
   };
 
   const handleSelectMCQ = (id: string, option: 'A' | 'B' | 'C' | 'D') => {
-    setUserMCQAnswers(prev => ({ ...prev, [id]: option }));
+    setCurrentProgress(prev => ({
+      ...prev,
+      mcq: { ...prev.mcq, [id]: option }
+    }));
   };
 
   const handleUpdateEssay = (id: string, text: string) => {
-    setUserEssayAnswers(prev => ({ ...prev, [id]: text }));
+    setCurrentProgress(prev => ({
+      ...prev,
+      essay: { ...prev.essay, [id]: text }
+    }));
   };
 
   const handleUpdateEssayScore = (id: string, score: number) => {
-    setEssayScores(prev => ({ ...prev, [id]: score }));
+    setCurrentProgress(prev => ({
+      ...prev,
+      essayScores: { ...prev.essayScores, [id]: score }
+    }));
   };
 
   const handleToggleBookmark = (id: string) => {
-    setBookmarkedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+    setCurrentProgress(prev => {
+      const nextBookmarks = new Set(prev.bookmarks);
+      if (nextBookmarks.has(id)) nextBookmarks.delete(id);
+      else nextBookmarks.add(id);
+      return { ...prev, bookmarks: nextBookmarks };
     });
   };
 
@@ -142,29 +186,28 @@ export function App() {
 
     // 1. Calculate TF score
     let tfScore = 0;
-    TF_QUESTIONS.forEach(q => {
-      if (userTFAnswers[q.id] === q.correctAnswer) {
+    currentTF.forEach(q => {
+      if (currentProgress.tf[q.id] === q.correctAnswer) {
         tfScore += 1;
       }
     });
 
     // 2. Calculate MCQ score
     let mcqScore = 0;
-    MCQ_QUESTIONS.forEach(q => {
-      if (userMCQAnswers[q.id] === q.correctOption) {
+    currentMCQ.forEach(q => {
+      if (currentProgress.mcq[q.id] === q.correctOption) {
         mcqScore += 1;
       }
     });
 
     // 3. Calculate Essay score
     let essayScore = 0;
-    ESSAY_QUESTIONS.forEach(q => {
-      const selfScored = essayScores[q.id];
+    currentEssay.forEach(q => {
+      const selfScored = currentProgress.essayScores[q.id];
       if (selfScored !== undefined) {
         essayScore += selfScored;
       } else {
-        // If student wrote something substantial, award proportionate baseline based on keywords
-        const text = (userEssayAnswers[q.id] || '').toLowerCase();
+        const text = (currentProgress.essay[q.id] || '').toLowerCase();
         let matches = 0;
         q.keyPoints.forEach(kp => {
           const words = kp.toLowerCase().split(/\s+/).filter(w => w.length > 4);
@@ -176,11 +219,12 @@ export function App() {
     });
 
     const totalScore = tfScore + mcqScore + essayScore;
-    const timeSpent = (EXAM_METADATA.timeLimitMinutes * 60) - timeRemainingSeconds;
+    const timeSpent = (currentMetadata.timeLimitMinutes * 60) - currentProgress.timeRemaining;
 
     const entry = addScoreEntry({
       userName: currentUser.userName,
       studentId: currentUser.studentId,
+      examId: selectedExam,
       mode: activeTab === 'exam' ? 'exam' : 'practice',
       tfScore,
       mcqScore,
@@ -189,44 +233,44 @@ export function App() {
       timeTakenSeconds: Math.max(30, timeSpent),
     });
 
-    setSubmissionResult(entry);
+    setCurrentProgress(prev => ({
+      ...prev,
+      submitted: true,
+      result: entry
+    }));
+
     setScoreboardEntries(getScoreboard());
-    setIsExamSubmitted(true);
-    setIsTimerRunning(false);
     setShowResultsModal(true);
   };
 
   const handleResetExam = () => {
-    if (confirm('Are you sure you want to restart the exam? Your current progress will be reset.')) {
-      setUserTFAnswers({});
-      setUserMCQAnswers({});
-      setUserEssayAnswers({});
-      setEssayScores({});
-      setBookmarkedIds(new Set());
-      setTimeRemainingSeconds(EXAM_METADATA.timeLimitMinutes * 60);
-      setIsExamSubmitted(false);
-      setIsTimerRunning(true);
+    if (confirm(`Restart ${currentMetadata.examTitle}? Your answers for this exam will be reset.`)) {
+      setCurrentProgress(initialProgress(currentMetadata.timeLimitMinutes));
       setShowResultsModal(false);
-      setSubmissionResult(null);
     }
   };
 
   // Progress metrics
-  const answeredTF = Object.keys(userTFAnswers).length;
-  const answeredMCQ = Object.keys(userMCQAnswers).length;
-  const answeredEssay = Object.keys(userEssayAnswers).filter(k => (userEssayAnswers[k] || '').trim().length > 0).length;
+  const answeredTF = Object.keys(currentProgress.tf).length;
+  const answeredMCQ = Object.keys(currentProgress.mcq).length;
+  const answeredEssay = Object.keys(currentProgress.essay).filter(k => (currentProgress.essay[k] || '').trim().length > 0).length;
   const totalAnswered = answeredTF + answeredMCQ + answeredEssay;
-  const totalQuestions = TF_QUESTIONS.length + MCQ_QUESTIONS.length + ESSAY_QUESTIONS.length;
+  const totalQuestions = currentTF.length + currentMCQ.length + currentEssay.length;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans transition-colors duration-200">
       {/* Header */}
       <ExamHeader
         currentUser={currentUser || { userName: 'Guest Student', studentId: 'N/A' }}
+        selectedExam={selectedExam}
+        onSelectExam={(exam) => {
+          setSelectedExam(exam);
+          setActiveExamSection('tf');
+        }}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        timeRemainingSeconds={timeRemainingSeconds}
-        isExamSubmitted={isExamSubmitted}
+        timeRemainingSeconds={currentProgress.timeRemaining}
+        isExamSubmitted={currentProgress.submitted}
         onOpenUserModal={() => setIsUserModalOpen(true)}
         onSubmitExam={handleSubmitExam}
         answeredCount={totalAnswered}
@@ -241,26 +285,34 @@ export function App() {
         {(activeTab === 'exam' || activeTab === 'practice') && (
           <div className="space-y-6">
             {/* Context Notice / Instructions */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-700 to-indigo-800 text-white shadow-lg shadow-blue-700/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className={`p-4 sm:p-5 rounded-2xl text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+              selectedExam === 'exam-2'
+                ? 'bg-gradient-to-r from-indigo-700 via-purple-700 to-indigo-900 shadow-indigo-700/10'
+                : 'bg-gradient-to-r from-blue-700 to-indigo-800 shadow-blue-700/10'
+            }`}>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs uppercase font-extrabold px-2 py-0.5 rounded bg-white/20">
-                    {activeTab === 'exam' ? 'Official Simulation Mode' : 'Practice & Study Mode'}
+                    {activeTab === 'exam' ? 'Exam Simulation' : 'Practice & Study Mode'}
+                  </span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-400 text-slate-950">
+                    {selectedExam === 'exam-1' ? 'Mock 1: Week 04 Practice Sheet' : '⭐ Mock 2: Real Midterm Exam'}
                   </span>
                   <span className="text-xs text-blue-200">
-                    {activeTab === 'exam' ? 'Timed 45 Mins • Final Submission Grading' : 'Instant Answer Feedback & Lecture Citations'}
+                    {activeTab === 'exam' ? 'Timed 45 Mins • Graded on Submission' : 'Instant Answers & Citations'}
                   </span>
                 </div>
-                <h2 className="text-lg sm:text-xl font-bold mt-1">
-                  Digital Image Processing Comprehensive Mock Exam
+                <h2 className="text-lg sm:text-xl font-bold mt-1.5 flex items-center gap-2">
+                  <span>{currentMetadata.examTitle}</span>
+                  {selectedExam === 'exam-2' && <Sparkles className="w-5 h-5 text-amber-300" />}
                 </h2>
                 <p className="text-xs text-blue-100 mt-0.5">
-                  Questions are extracted and verified against course lectures (Weeks 01–03).
+                  76 Points Total (30 TF, 16 MCQ, 6 Essay & Calculation) • Verified against Lectures Weeks 01–03.
                 </p>
               </div>
 
               <div className="flex items-center gap-2">
-                {isExamSubmitted && (
+                {currentProgress.submitted && (
                   <button
                     onClick={handleResetExam}
                     className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition-colors"
@@ -269,10 +321,10 @@ export function App() {
                     <span>Retake Exam</span>
                   </button>
                 )}
-                {activeTab === 'exam' && !isExamSubmitted && (
+                {activeTab === 'exam' && !currentProgress.submitted && (
                   <button
                     onClick={handleSubmitExam}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-blue-800 hover:bg-blue-50 font-bold text-xs shadow-md transition-all hover:scale-105"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-blue-900 hover:bg-blue-50 font-bold text-xs shadow-md transition-all hover:scale-105"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span>Submit & Score</span>
@@ -344,39 +396,39 @@ export function App() {
             {/* Active Section Content */}
             {activeExamSection === 'tf' && (
               <TFSection
-                questions={TF_QUESTIONS}
-                userAnswers={userTFAnswers}
+                questions={currentTF}
+                userAnswers={currentProgress.tf}
                 onSelectAnswer={handleSelectTF}
-                showFeedback={activeTab === 'practice' || isExamSubmitted}
-                bookmarkedIds={bookmarkedIds}
+                showFeedback={activeTab === 'practice' || currentProgress.submitted}
+                bookmarkedIds={currentProgress.bookmarks}
                 onToggleBookmark={handleToggleBookmark}
               />
             )}
 
             {activeExamSection === 'mcq' && (
               <MCQSection
-                questions={MCQ_QUESTIONS}
-                userAnswers={userMCQAnswers}
+                questions={currentMCQ}
+                userAnswers={currentProgress.mcq}
                 onSelectOption={handleSelectMCQ}
-                showFeedback={activeTab === 'practice' || isExamSubmitted}
-                bookmarkedIds={bookmarkedIds}
+                showFeedback={activeTab === 'practice' || currentProgress.submitted}
+                bookmarkedIds={currentProgress.bookmarks}
                 onToggleBookmark={handleToggleBookmark}
               />
             )}
 
             {activeExamSection === 'essay' && (
               <EssaySection
-                questions={ESSAY_QUESTIONS}
-                userAnswers={userEssayAnswers}
+                questions={currentEssay}
+                userAnswers={currentProgress.essay}
                 onUpdateAnswer={handleUpdateEssay}
-                essayScores={essayScores}
+                essayScores={currentProgress.essayScores}
                 onUpdateScore={handleUpdateEssayScore}
-                showFeedback={activeTab === 'practice' || isExamSubmitted}
+                showFeedback={activeTab === 'practice' || currentProgress.submitted}
               />
             )}
 
             {/* Bottom floating submit trigger */}
-            {activeTab === 'exam' && !isExamSubmitted && (
+            {activeTab === 'exam' && !currentProgress.submitted && (
               <div className="flex items-center justify-between p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-lg shadow-slate-200/50 dark:shadow-none">
                 <div className="text-xs text-slate-600 dark:text-slate-400">
                   Total answered: <strong className="text-slate-900 dark:text-white">{totalAnswered} / {totalQuestions}</strong> questions.
@@ -413,7 +465,10 @@ export function App() {
 
         {/* TAB 3: LECTURE REFERENCE & SOLUTION KEY */}
         {activeTab === 'reference' && (
-          <ReferenceKeyView />
+          <ReferenceKeyView 
+            selectedExam={selectedExam}
+            onSelectExam={setSelectedExam}
+          />
         )}
       </main>
 
@@ -445,17 +500,17 @@ export function App() {
       />
 
       {/* Exam Results Modal */}
-      {submissionResult && (
+      {currentProgress.result && (
         <ExamResultsModal
           isOpen={showResultsModal}
-          userName={submissionResult.userName}
-          tfScore={submissionResult.tfScore}
-          mcqScore={submissionResult.mcqScore}
-          essayScore={submissionResult.essayScore}
-          totalScore={submissionResult.totalScore}
-          percentage={submissionResult.percentage}
-          timeSpentSeconds={submissionResult.timeTakenSeconds}
-          gradeBadge={submissionResult.gradeBadge}
+          userName={currentProgress.result.userName}
+          tfScore={currentProgress.result.tfScore}
+          mcqScore={currentProgress.result.mcqScore}
+          essayScore={currentProgress.result.essayScore}
+          totalScore={currentProgress.result.totalScore}
+          percentage={currentProgress.result.percentage}
+          timeSpentSeconds={currentProgress.result.timeTakenSeconds}
+          gradeBadge={currentProgress.result.gradeBadge}
           onReviewAnswers={() => {
             setShowResultsModal(false);
             setActiveTab('practice');
